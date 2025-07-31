@@ -1,0 +1,275 @@
+import tkinter as tk
+from tkinter import messagebox, ttk
+from PIL import Image, ImageTk  # For image handling
+import mysql.connector
+
+
+# ------------------ MySQL Connection -------------------
+def connect_db():
+    return mysql.connector.connect(
+        host='localhost',
+        user='root',
+        password='1121',
+        database='cricket_db'
+    )
+
+
+# ------------------ Login Page -------------------
+def login():
+    username = username_entry.get()
+    password = password_entry.get()
+
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username=%s AND password=%s", (username, password))
+    result = cursor.fetchone()
+    conn.close()
+
+    if result:
+        login_window.destroy()  # Close the login window after successful login
+        open_main_window()  # Open the main window
+    else:
+        messagebox.showerror("Error", "Invalid Username or Password")
+
+
+# ------------------ Main Window -------------------
+def open_main_window():
+    main_window = tk.Tk()
+    main_window.title("Cricket Team Management")
+
+    # Set background color for the main window (no image)
+    main_window.geometry("1200x800")  # Set window size (Larger window)
+
+    # Add background image to the main window
+    canvas = tk.Canvas(main_window, width=1200, height=800)
+    canvas.pack(fill="both", expand=True)
+
+    bg_image = Image.open("main.jpg")  # Ensure you have this image file
+    bg_image = bg_image.resize((1200, 800), Image.Resampling.LANCZOS)  # Resize image
+    bg_image = ImageTk.PhotoImage(bg_image)
+    canvas.create_image(0, 0, anchor="nw", image=bg_image)
+
+    # Variables for player details
+    name_var = tk.StringVar()
+    age_var = tk.StringVar()
+    role_var = tk.StringVar()
+    team_var = tk.StringVar()
+    search_var = tk.StringVar()
+    selected_player_id = None  # Track the selected player's ID
+
+    # Create a frame for the table (this frame will appear above the background image)
+    table_frame = tk.Frame(main_window, bg="#f0f0f0")  # Match background color
+    table_frame.place(x=50, y=150)  # Position the table frame below the background image
+
+    # Create a Treeview widget to display the players
+    tree = ttk.Treeview(table_frame, columns=('ID', 'Name', 'Age', 'Role', 'Team'), show='headings')
+    tree.heading('ID', text='ID')
+    tree.heading('Name', text='Name')
+    tree.heading('Age', text='Age')
+    tree.heading('Role', text='Role')
+    tree.heading('Team', text='Team')
+    tree.pack()
+
+    # Create a frame for the buttons and player details input
+    button_frame = tk.Frame(main_window, bg="#f0f0f0")
+    button_frame.place(x=50, y=500)  # Position below the player list (table)
+
+    # Create a frame for adding and updating player details
+    add_update_frame = tk.Frame(main_window, bg="#f0f0f0")
+    add_update_frame.place(x=50, y=400)  # Place the input fields and buttons below the table
+
+    tk.Label(add_update_frame, text="Name:", bg="#f0f0f0").grid(row=0, column=0)
+    tk.Entry(add_update_frame, textvariable=name_var, bg="white").grid(row=0, column=1)
+
+    tk.Label(add_update_frame, text="Age:", bg="#f0f0f0").grid(row=1, column=0)
+    tk.Entry(add_update_frame, textvariable=age_var, bg="white").grid(row=1, column=1)
+
+    tk.Label(add_update_frame, text="Role:", bg="#f0f0f0").grid(row=2, column=0)
+    tk.Entry(add_update_frame, textvariable=role_var, bg="white").grid(row=2, column=1)
+
+    tk.Label(add_update_frame, text="Team:", bg="#f0f0f0").grid(row=3, column=0)
+    tk.Entry(add_update_frame, textvariable=team_var, bg="white").grid(row=3, column=1)
+
+    # ------------------ Button Functions -------------------
+
+    def fetch_players():
+        # Clear the table before populating
+        for row in tree.get_children():
+            tree.delete(row)
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM players")
+        rows = cursor.fetchall()
+        for row in rows:
+            tree.insert('', 'end', values=row)
+        conn.close()
+
+    def add_player():
+        name = name_var.get()
+        age = age_var.get()
+        role = role_var.get()
+        team = team_var.get()
+
+        # Validation
+        if not name or not age.isdigit() or not role or not team:
+            messagebox.showerror("Error", "All fields must be filled correctly")
+            return
+
+        # Insert the new player into the database
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO players (name, age, role, team) VALUES (%s, %s, %s, %s)",
+                       (name, age, role, team))
+        conn.commit()
+        conn.close()
+
+        fetch_players()
+        clear_fields()  # Clear the fields after adding the player
+
+    def save_changes():
+        # Check if a player has been selected
+        if selected_player_id is None:
+            messagebox.showerror("Error", "No player selected")
+            return
+
+        name = name_var.get()
+        age = age_var.get()
+        role = role_var.get()
+        team = team_var.get()
+
+        # Validation
+        if not name or not age.isdigit() or not role or not team:
+            messagebox.showerror("Error", "All fields must be filled correctly")
+            return
+
+        # Update the database with the new values
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE players SET name=%s, age=%s, role=%s, team=%s WHERE id=%s",
+                       (name, age, role, team, selected_player_id))
+        conn.commit()
+        conn.close()
+
+        fetch_players()  # Refresh the player list
+        clear_fields()  # Clear input fields after saving changes
+
+    def on_select_player(event):
+        nonlocal selected_player_id  # Use the global selected_player_id variable
+        selected_item = tree.selection()
+        if selected_item:
+            player_data = tree.item(selected_item[0])['values']
+            selected_player_id = player_data[0]  # Set the selected player ID
+            name_var.set(player_data[1])
+            age_var.set(player_data[2])
+            role_var.set(player_data[3])
+            team_var.set(player_data[4])
+
+    def delete_player():
+        # Get the selected player ID from the treeview
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showerror("Error", "Please select a player to delete")
+            return
+
+        player_data = tree.item(selected_item[0])['values']
+        player_id = player_data[0]
+
+        # Deleting player from the database
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM players WHERE id=%s", (player_id,))
+        conn.commit()
+        conn.close()
+
+        fetch_players()
+        clear_fields()  # Clear the fields after deletion
+
+    def delete_all_players():
+        confirm = messagebox.askyesno("Confirm Delete", "Are you sure you want to delete all players?")
+        if confirm:
+            conn = connect_db()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM players")
+            conn.commit()
+            conn.close()
+
+            fetch_players()
+            clear_fields()  # Clear the fields after deleting all players
+
+    def search_player():
+        player_id = search_var.get()
+
+        if not player_id.isdigit():
+            messagebox.showerror("Error", "Please enter a valid player ID")
+            return
+
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM players WHERE id=%s", (player_id,))
+        player = cursor.fetchone()
+        conn.close()
+
+        if player:
+            messagebox.showinfo("Player Found",
+                                f"ID: {player[0]}\nName: {player[1]}\nAge: {player[2]}\nRole: {player[3]}\nTeam: {player[4]}")
+        else:
+            messagebox.showerror("Error", "Player not found")
+
+    def clear_fields():
+        """Function to clear the input fields after any operation."""
+        name_var.set("")
+        age_var.set("")
+        role_var.set("")
+        team_var.set("")
+
+    # Bind selection of player in Treeview to fetch details
+    tree.bind("<<TreeviewSelect>>", on_select_player)
+
+    # Button widgets
+    tk.Button(button_frame, text="Add Player", command=add_player, bg="#4CAF50", fg="white").pack(side='left', padx=10)
+    tk.Button(button_frame, text="Update Player", command=save_changes, bg="#00bcd4", fg="white").pack(side='left',
+                                                                                                       padx=10)
+    tk.Button(button_frame, text="Delete Player", command=delete_player, bg="#f44336", fg="white").pack(side='left',
+                                                                                                        padx=10)
+    tk.Button(button_frame, text="Delete All Players", command=delete_all_players, bg="#f44336", fg="white").pack(
+        side='left', padx=10)
+
+    tk.Entry(button_frame, textvariable=search_var, width=20).pack(side='left', padx=10)
+    tk.Button(button_frame, text="Search by ID", command=search_player, bg="#2196F3", fg="white").pack(side='left',
+                                                                                                       padx=10)
+
+    fetch_players()  # Fetch and display all players on window open
+
+    main_window.mainloop()  # Run the Tkinter main event loop
+
+
+# ------------------ Login Window -------------------
+login_window = tk.Tk()
+login_window.title("Login")
+
+# Set background color for the login window (no image)
+login_window.geometry("800x600")  # Larger window size
+login_window.config(bg="#f0f0f0")  # Light gray background
+
+# Add background image to the login window
+canvas = tk.Canvas(login_window, width=800, height=600)
+canvas.pack(fill="both", expand=True)
+
+bg_image = Image.open("background_login.jpg")  # Ensure you have this image file
+bg_image = bg_image.resize((800, 600), Image.Resampling.LANCZOS)  # Resize image
+bg_image = ImageTk.PhotoImage(bg_image)
+canvas.create_image(0, 0, anchor="nw", image=bg_image)
+
+# Username and Password fields
+tk.Label(login_window, text="Username", bg="#f0f0f0").place(x=300, y=200)
+username_entry = tk.Entry(login_window, bg="white")
+username_entry.place(x=400, y=200)
+
+tk.Label(login_window, text="Password", bg="#f0f0f0").place(x=300, y=250)
+password_entry = tk.Entry(login_window, show="*", bg="white")
+password_entry.place(x=400, y=250)
+
+# Login button
+tk.Button(login_window, text="Login", command=login, bg="#4CAF50", fg="white").place(x=400, y=300)
+
+login_window.mainloop()  # Run the login window's main event loop
